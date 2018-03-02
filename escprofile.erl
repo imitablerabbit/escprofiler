@@ -44,7 +44,7 @@ wrap_calls(Tree) ->
 						  Node
 				  end
 		  end,
-	postorder(Fun, Tree).
+	erl_syntax_lib:map(Fun, Tree).
 
 %% @doc returns the data relating to an application node such as the
 %% module, function, line number and the argument nodes used in the
@@ -72,13 +72,3 @@ wrap_node(Node) ->
 							 erl_syntax:module_qualifier(erl_syntax:atom(io), erl_syntax:atom(format)),[erl_syntax:string("About to send:~n")]),
 						   Node
 						  ]).
-
-%% @doc traverse the syntaxTree and map the function F to each of the tree nodes
-postorder(F, Tree) ->
-	F(case erl_syntax:subtrees(Tree) of
-		  [] -> Tree;
-		  List -> erl_syntax:update_tree(Tree,
-										 [[postorder(F, Subtree)
-										   || Subtree <- Group]
-										  || Group <- List])
-	  end).
