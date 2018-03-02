@@ -22,6 +22,8 @@ main([Filename]) ->
 	% Wrap each of the function calls with a profile function
 	NewForm = wrap_calls(Tree),
 	NewAbs = erl_syntax:revert_forms(NewForm),
+	Io = erl_prettypr:format(NewForm),
+	io:put_chars(Io),
 
 	% Write the compiled bin to a file
 	% This step can probably be skipped by just evaling the forms
@@ -38,7 +40,8 @@ wrap_calls(Tree) ->
 				  case erl_syntax:type(Node) of
 					  application ->
 						  {Line, Mod, Fun, Args} = application_information(Node),
-						  io:format("Wrapping call ~p:~p/~p on line ~p~n", [Mod, Fun, erlang:length(Args), Line]),
+						  io:format("Wrapping call ~p:~p/~p on line ~p~n", 
+									[Mod, Fun, erlang:length(Args), Line]),
 						  wrap_node(Node);
 					  _ ->
 						  Node
@@ -66,9 +69,18 @@ application_information(Node) ->
 	{Line, Mod, Fun, Args}.
 
 %% @doc wrap a syntaxTree node with a timer block expresion and print out.
+-spec wrap_node(Node :: erl_syntax:syntaxTree()) -> erl_syntax:syntaxTree().
 wrap_node(Node) ->
-	erl_syntax:block_expr([
-						   erl_syntax:application(
-							 erl_syntax:module_qualifier(erl_syntax:atom(io), erl_syntax:atom(format)),[erl_syntax:string("About to send:~n")]),
-						   Node
-						  ]).
+	TimerFun = erl_syntax:fun_expr([erl_syntax:clause(none, [Node])]),
+	MatchTuple = erl_syntax:tuple([erl_syntax:variable('Time'), erl_syntax:variable('_')]),
+	MatchFun = erl_syntax:application(
+				 erl_syntax:module_qualifier(erl_syntax:atom(timer), erl_syntax:atom(tc)), 
+				 [TimerFun]),
+	erl_syntax:application(
+	  erl_syntax:fun_expr([
+		erl_syntax:clause(none, [
+								 erl_syntax:match_expr(MatchTuple, MatchFun),
+								 erl_syntax:application(
+								   erl_syntax:module_qualifier(erl_syntax:atom(io), erl_syntax:atom(format)), 
+								   [erl_syntax:string("Took ~p~n"), erl_syntax:list([erl_syntax:variable('Time')])])
+								])]), []).
