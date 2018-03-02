@@ -1,3 +1,5 @@
+#!/usr/bin/env escript
+
 %% @doc
 %% escprofile is a simple escript which profiles the time it takes for each
 %% function call in another escript file.
@@ -13,54 +15,70 @@
 -export([main/1]).
 
 main([Filename]) ->
-	% Find the other escript file
-	%{ok, Bin} = file:read_file(Filename), % read all of the file
-	%Filedata = binary_to_list(Bin),
-
-	% Lex and parse the code
-	%{ok, Tokens, _} = erl_scan:string(Filedata),
+	% Lex and parse the code via the preprocessor
 	{ok, Form} = epp:parse_file(Filename, []),
-	io:format("ok", []),
-	%{ok, Abs} = erl_parse:parse(Tokens),
-	io:format("ok", []),
+	Tree = erl_syntax:form_list(Form),
 
 	% Wrap each of the function calls with a profile function
-	NewAbs = wrap_form(Form),
-	%io:format("~p~n", [NewAbs]),
+	NewForm = wrap_calls(Tree),
+	NewAbs = erl_syntax:revert_forms(NewForm),
+
+	% Write the compiled bin to a file
+	% This step can probably be skipped by just evaling the forms
 	{ok, BinFilename, Bin} = compile:forms(NewAbs),
 	file:write_file(BinFilename, Bin),
 
-	% Run the script which prints the profile information out
-	%erl_eval:exprs(NewAbs, []),
+	% Execute the script file
 	ok.
 
-%% @doc profile_wrapper will return the tokens for a wrapper function which
-%% will print out the time each function call in escript took to run.
-wrap_with_profiler({call, Line, _} = WrapAbs) ->
-	% Im lazy so this is converting from the string and replacing needed data
-	TimerFunString = "fun() -> 
-					   	{Time, _} = timer:tc('$replace_fun'),
-					   	io:format(\"Line=~p Time=~n\", ['$replace_line', Time)
-			  		  end",
-	{ok, Tokens, _} = erl_scan:string(TimerFunString),
-	{ok, Abs} = erl_parse:parse(Tokens),
-	% Find the atom data that needs to be replaced and replace it
-	MapFun = fun({atom, _, '$replace_fun'}) -> 
-					 WrapAbs;
-		  		({atom, _, '$replace_line'}) -> 
-					 {integer, Line, Line};
-				(Acc) ->
-					 Acc
-			 end,
-	erl_parse:map(MapFun, Abs).
+%% @doc wrap_form takes in a syntaxTree list and wraps any matching types
+%% with a passed in syntaxTree.
+wrap_calls(Tree) ->
+	Fun = fun(Node) -> 
+				  case erl_syntax:type(Node) of
+					  application ->
+						  {Line, Mod, Fun, Args} = application_information(Node),
+						  io:format("Wrapping call ~p:~p/~p on line ~p~n", [Mod, Fun, erlang:length(Args), Line]),
+						  wrap_node(Node);
+					  _ ->
+						  Node
+				  end
+		  end,
+	postorder(Fun, Tree).
 
-%% @doc wrap_tokens will wrap all of the matching tokens with the wrapping
-%% tokens.
-wrap_form(Abs) ->
-	WrapMapFun = fun({call, _, _} = FunAbs) -> 
-						wrap_with_profiler(FunAbs);
-					(AbsAcc) ->
-						 io:format("~p~n", [AbsAcc]),
-						AbsAcc
+%% @doc returns the data relating to an application node such as the
+%% module, function, line number and the argument nodes used in the
+%% application node.
+-spec application_information(Node :: erl_syntax:syntaxTree()) ->
+	{Line :: pos_integer(), Mod :: atom(), Fun :: atom(), Args :: list(erl_syntax:syntaxTree())}.
+application_information(Node) ->
+	Line = erl_syntax:get_pos(Node),
+	AppOp = erl_syntax:application_operator(Node),
+	{Mod, Fun} = case erl_syntax:type(AppOp) of
+					 module_qualifier ->
+						 ModNode = erl_syntax:module_qualifier_argument(AppOp),
+						 FunNode = erl_syntax:module_qualifier_body(AppOp),
+						 {erl_syntax:atom_value(ModNode), erl_syntax:atom_value(FunNode)};
+					 atom ->
+						 {none, erl_syntax:atom_value(AppOp)}
 				 end,
-	erl_parse:map_anno(WrapMapFun, Abs).
+	Args = erl_syntax:application_arguments(Node),
+	{Line, Mod, Fun, Args}.
+
+%% @doc wrap a syntaxTree node with a timer block expresion and print out.
+wrap_node(Node) ->
+	erl_syntax:block_expr([
+						   erl_syntax:application(
+							 erl_syntax:module_qualifier(erl_syntax:atom(io), erl_syntax:atom(format)),[erl_syntax:string("About to send:~n")]),
+						   Node
+						  ]).
+
+%% @doc traverse the syntaxTree and map the function F to each of the tree nodes
+postorder(F, Tree) ->
+	F(case erl_syntax:subtrees(Tree) of
+		  [] -> Tree;
+		  List -> erl_syntax:update_tree(Tree,
+										 [[postorder(F, Subtree)
+										   || Subtree <- Group]
+										  || Group <- List])
+	  end).
