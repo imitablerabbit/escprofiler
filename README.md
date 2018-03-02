@@ -1,4 +1,4 @@
-# esctracer
+# escprofiler
 Command line escript tracing tool
 
 ## Todo
