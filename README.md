@@ -12,3 +12,7 @@ Command line escript tracing tool
 	wrapping function each time a wrapping occurs
 - Add the function call data to the print out information - this is probably
 one of the more important tasks to do
+- Add timings for anon funs as well
+- Looks like `erl_parse` might not be the best way of doing this with escripts
+as it has difficulty working with annotations in the code and general file
+syntax rules. maybe `epp:parse_file` would be helpful
