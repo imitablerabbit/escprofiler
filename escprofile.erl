@@ -14,6 +14,13 @@
 -author(markhillman).
 -export([main/1]).
 
+-type line() :: pos_integer().
+-type mod_name() :: atom().
+-type fun_name() :: atom().
+-type args() :: list(erl_syntax:syntaxTree()).
+-type call() :: {mod_name(), fun_name()} | fun_name().
+-type app_info() :: {line(), call(), args()}.
+
 main([Filename]) ->
 	% Lex and parse the code via the preprocessor
 	{ok, Form} = epp:parse_file(Filename, []),
@@ -39,10 +46,10 @@ wrap_calls(Tree) ->
 	Fun = fun(Node) -> 
 				  case erl_syntax:type(Node) of
 					  application ->
-						  {Line, Mod, Fun, Args} = application_information(Node),
+						  {Line, Mod, Fun, Args} = AppInfo = application_information(Node),
 						  io:format("Wrapping call ~p:~p/~p on line ~p~n", 
 									[Mod, Fun, erlang:length(Args), Line]),
-						  wrap_node(Node);
+						  wrap_call(Node, AppInfo);
 					  _ ->
 						  Node
 				  end
@@ -52,35 +59,33 @@ wrap_calls(Tree) ->
 %% @doc returns the data relating to an application node such as the
 %% module, function, line number and the argument nodes used in the
 %% application node.
--spec application_information(Node :: erl_syntax:syntaxTree()) ->
-	{Line :: pos_integer(), Mod :: atom(), Fun :: atom(), Args :: list(erl_syntax:syntaxTree())}.
+-spec application_information(Node :: erl_syntax:syntaxTree()) -> app_info().
 application_information(Node) ->
 	Line = erl_syntax:get_pos(Node),
 	AppOp = erl_syntax:application_operator(Node),
-	{Mod, Fun} = case erl_syntax:type(AppOp) of
-					 module_qualifier ->
-						 ModNode = erl_syntax:module_qualifier_argument(AppOp),
-						 FunNode = erl_syntax:module_qualifier_body(AppOp),
-						 {erl_syntax:atom_value(ModNode), erl_syntax:atom_value(FunNode)};
-					 atom ->
-						 {none, erl_syntax:atom_value(AppOp)}
-				 end,
 	Args = erl_syntax:application_arguments(Node),
-	{Line, Mod, Fun, Args}.
+	{Line, call_information(AppOp, erl_syntax:type(AppOp)), Args}.
+
+%% @doc get the call information like the mod:fun or fun name 
+-spec call_information(AppOp :: erl_syntax:syntaxTree(), AppOpType :: atom()) -> call().
+call_information(AppOp, module_qualifier) ->
+	ModNode = erl_syntax:module_qualifier_argument(AppOp),
+	FunNode = erl_syntax:module_qualifier_body(AppOp),
+	{erl_syntax:atom_value(ModNode), erl_syntax:atom_value(FunNode)};
+call_information(AppOp, atom) ->
+	erl_syntax:atom_value(AppOp).
 
 %% @doc wrap a syntaxTree node with a timer block expresion and print out.
--spec wrap_node(Node :: erl_syntax:syntaxTree()) -> erl_syntax:syntaxTree().
-wrap_node(Node) ->
+-spec wrap_call(Node :: erl_syntax:syntaxTree(), app_info()) ->	erl_syntax:syntaxTree().
+wrap_call(Node, {Line, Mod, Fun, Args}) ->
 	TimerFun = erl_syntax:fun_expr([erl_syntax:clause(none, [Node])]),
 	MatchTuple = erl_syntax:tuple([erl_syntax:variable('Time'), erl_syntax:variable('_')]),
 	MatchFun = erl_syntax:application(
 				 erl_syntax:module_qualifier(erl_syntax:atom(timer), erl_syntax:atom(tc)), 
 				 [TimerFun]),
-	erl_syntax:application(
-	  erl_syntax:fun_expr([
-		erl_syntax:clause(none, [
-								 erl_syntax:match_expr(MatchTuple, MatchFun),
-								 erl_syntax:application(
-								   erl_syntax:module_qualifier(erl_syntax:atom(io), erl_syntax:atom(format)), 
-								   [erl_syntax:string("Took ~p~n"), erl_syntax:list([erl_syntax:variable('Time')])])
-								])]), []).
+	FormatString = io_lib:format("~p:~p/~p on line ~p", [Mod, Fun, erlang:length(Args), Line]),
+	Body = [erl_syntax:match_expr(MatchTuple, MatchFun),
+			erl_syntax:application(
+			  erl_syntax:module_qualifier(erl_syntax:atom(io), erl_syntax:atom(format)), 
+			  [erl_syntax:string(FormatString ++ " took ~p~n"), erl_syntax:list([erl_syntax:variable('Time')])])],
+	erl_syntax:application(erl_syntax:fun_expr([erl_syntax:clause(none, Body)]), []).
