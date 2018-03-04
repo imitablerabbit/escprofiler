@@ -5,14 +5,17 @@ Command line escript tracing tool
 
 - Finish the script
 - Test the script
-- Change the wrapping function so that it will take in a map
-	- The map will contain data that needs to be replaced in the wrapping
-	function
-	- This should stop the function from generating the abs form of the
-	wrapping function each time a wrapping occurs
-- Add the function call data to the print out information - this is probably
-one of the more important tasks to do
+  - Split the `test.erl` file down into seperate test functions that can make sure functionality is kept
+    - remote function calls
+    - same file function calls
+    - anon function calls
+    - Return values are being kept
+    - Timer information is printed out
+- Change the timer information so that it is only printed out after the file has finished running.
+  - Spawn a process which receives time information
+  - Build a list of the time information
+  - Sort the list of times so that the longest function call is printed last
+  - Print all the times
+- ~~Add the function call data to the print out information - this is probably
+one of the more important tasks to do~~
 - Add timings for anon funs as well
-- Looks like `erl_parse` might not be the best way of doing this with escripts
-as it has difficulty working with annotations in the code and general file
-syntax rules. maybe `epp:parse_file` would be helpful
