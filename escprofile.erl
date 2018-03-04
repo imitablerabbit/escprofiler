@@ -44,15 +44,14 @@ main([Filename]) ->
 %% with a passed in syntaxTree.
 wrap_calls(Tree) ->
     Fun = fun(Node) ->
-                  case erl_syntax:type(Node) of
-                      application ->
-                          {Line, Mod, Fun, Args} = AppInfo = application_information(Node),
-                          io:format("Wrapping call ~p:~p/~p on line ~p~n",
-                                    [Mod, Fun, erlang:length(Args), Line]),
-                          wrap_call(Node, AppInfo);
-                      _ ->
-                          Node
-                  end
+            case erl_syntax:type(Node) of
+                application ->
+                    AppInfo = application_information(Node),
+                    print_app_info(AppInfo),
+                    wrap_call(Node, AppInfo);
+                _ ->
+                    Node
+            end
           end,
     erl_syntax_lib:map(Fun, Tree).
 
@@ -77,15 +76,28 @@ call_information(AppOp, atom) ->
 
 %% @doc wrap a syntaxTree node with a timer block expresion and print out.
 -spec wrap_call(Node :: erl_syntax:syntaxTree(), app_info()) ->	erl_syntax:syntaxTree().
-wrap_call(Node, {Line, Mod, Fun, Args}) ->
+wrap_call(Node, AppInfo) ->
     TimerFun = erl_syntax:fun_expr([erl_syntax:clause(none, [Node])]),
     MatchTuple = erl_syntax:tuple([erl_syntax:variable('Time'), erl_syntax:variable('_')]),
     MatchFun = erl_syntax:application(
-                 erl_syntax:module_qualifier(erl_syntax:atom(timer), erl_syntax:atom(tc)),
-                 [TimerFun]),
-    FormatString = io_lib:format("~p:~p/~p on line ~p", [Mod, Fun, erlang:length(Args), Line]),
+                    erl_syntax:module_qualifier(erl_syntax:atom(timer), erl_syntax:atom(tc)),
+                    [TimerFun]),
+    FormatString = format_app_info(AppInfo),
     Body = [erl_syntax:match_expr(MatchTuple, MatchFun),
             erl_syntax:application(
-              erl_syntax:module_qualifier(erl_syntax:atom(io), erl_syntax:atom(format)),
-              [erl_syntax:string(FormatString ++ " took ~p~n"), erl_syntax:list([erl_syntax:variable('Time')])])],
+                erl_syntax:module_qualifier(erl_syntax:atom(io), erl_syntax:atom(format)),
+                [erl_syntax:string(FormatString ++ " took ~p~n"), erl_syntax:list([erl_syntax:variable('Time')])])],
     erl_syntax:application(erl_syntax:fun_expr([erl_syntax:clause(none, Body)]), []).
+
+%% @doc format the app info data into a string for printout
+-spec format_app_info(app_info()) -> string().
+format_app_info({Line, {Mod, Fun}, Args}) ->
+    io_lib:format("~p:~p/~p on line ~p", [Mod, Fun, erlang:length(Args), Line]);
+format_app_info({Line, Fun, Args}) ->
+    io_lib:format("~p/~p on line ~p", [Fun, erlang:length(Args), Line]).
+
+%% @doc print out the function call that is being wrapped
+-spec print_app_info(AppInfo :: app_info()) -> ok.
+print_app_info(AppInfo) ->
+    FormatString = format_app_info(AppInfo),
+    io:format("Wrapping call " ++ FormatString ++ "~n", []).
