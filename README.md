@@ -1,5 +1,5 @@
 # escprofiler
-Command line escript tracing tool
+Command line escript profiling tool
 
 ## Todo
 
