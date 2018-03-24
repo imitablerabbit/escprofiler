@@ -1,5 +1,3 @@
-#!/usr/bin/env escript
-
 %% @doc
 %% escprofile is a simple escript which profiles the time it takes for each
 %% function call in another escript file.
@@ -42,6 +40,7 @@ main([Filename]) ->
 
 %% @doc wrap_form takes in a syntaxTree list and wraps any matching types
 %% with a passed in syntaxTree.
+-spec wrap_calls(Tree :: erl_syntax:syntaxTree()) -> erl_syntax:syntaxTree().
 wrap_calls(Tree) ->
     Fun = fun(Node) ->
             case erl_syntax:type(Node) of
@@ -78,7 +77,7 @@ call_information(AppOp, atom) ->
 -spec wrap_call(Node :: erl_syntax:syntaxTree(), app_info()) ->	erl_syntax:syntaxTree().
 wrap_call(Node, AppInfo) ->
     TimerFun = erl_syntax:fun_expr([erl_syntax:clause(none, [Node])]),
-    MatchTuple = erl_syntax:tuple([erl_syntax:variable('Time'), erl_syntax:variable('_')]),
+    MatchTuple = erl_syntax:tuple([erl_syntax:variable('Time'), erl_syntax:variable('Return')]),
     MatchFun = erl_syntax:application(
                     erl_syntax:module_qualifier(erl_syntax:atom(timer), erl_syntax:atom(tc)),
                     [TimerFun]),
@@ -86,7 +85,8 @@ wrap_call(Node, AppInfo) ->
     Body = [erl_syntax:match_expr(MatchTuple, MatchFun),
             erl_syntax:application(
                 erl_syntax:module_qualifier(erl_syntax:atom(io), erl_syntax:atom(format)),
-                [erl_syntax:string(FormatString ++ " took ~p~n"), erl_syntax:list([erl_syntax:variable('Time')])])],
+                [erl_syntax:string(FormatString ++ " took ~p~n"), erl_syntax:list([erl_syntax:variable('Time')])]),
+                erl_syntax:variable('Return')],
     erl_syntax:application(erl_syntax:fun_expr([erl_syntax:clause(none, Body)]), []).
 
 %% @doc format the app info data into a string for printout

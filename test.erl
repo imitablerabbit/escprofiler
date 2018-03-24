@@ -5,8 +5,9 @@
 main([]) ->
 	io:format("hello world", []),
 	timer:sleep(10),
-	hello(),
+	Variable = hello(),
+	Variable = hello,
 	ok.
 
 hello() -> 
-	ok.
+	hello.
